@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:purchase_hub_core/purchase_hub_core.dart';
+import 'package:purchase_hub_revenuecat/src/rc_client.dart';
 import 'package:purchases_flutter/purchases_flutter.dart' as rc;
 
 /// {@template purchase_hub_revenuecat}
@@ -9,18 +10,22 @@ import 'package:purchases_flutter/purchases_flutter.dart' as rc;
 /// {@endtemplate}
 final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
   /// {@macro purchase_hub_revenuecat}
-  RevenueCatPurchaseAdapter(this._configuration);
+  RevenueCatPurchaseAdapter(
+    this._configuration, {
+    RCClient client = const LiveRCClient(),
+  }) : _client = client;
 
   final rc.PurchasesConfiguration _configuration;
+  final RCClient _client;
   final StreamController<Subscription> _controller =
       StreamController<Subscription>.broadcast();
 
   @override
   Future<void> initialize() async {
-    await rc.Purchases.configure(_configuration);
+    await _client.configure(_configuration);
 
     // Listen for customer info updates from RC and pipe them to our domain
-    rc.Purchases.addCustomerInfoUpdateListener((customerInfo) {
+    _client.addCustomerInfoUpdateListener((customerInfo) {
       _controller.add(_mapCustomerInfoToSubscription(customerInfo));
     });
   }
@@ -36,7 +41,7 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
   @override
   Future<Subscription> getCurrentSubscription() async {
     try {
-      final info = await rc.Purchases.getCustomerInfo();
+      final info = await _client.getCustomerInfo();
       return _mapCustomerInfoToSubscription(info);
     } on PlatformException catch (e) {
       throw _handleException(e);
@@ -46,7 +51,7 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
   @override
   Future<List<PurchaseProduct>> getAvailableProducts() async {
     try {
-      final offerings = await rc.Purchases.getOfferings();
+      final offerings = await _client.getOfferings();
       final current = offerings.current;
 
       if (current == null || current.availablePackages.isEmpty) {
@@ -84,21 +89,21 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
   Future<PurchaseResult> purchase(String productId) async {
     try {
       // Find the package in the current offering
-      final offerings = await rc.Purchases.getOfferings();
+      final offerings = await _client.getOfferings();
       final package = offerings.current?.availablePackages
           .where((pkg) => pkg.storeProduct.identifier == productId)
           .firstOrNull;
 
       rc.PurchaseResult result;
       if (package != null) {
-        result = await rc.Purchases.purchase(
+        result = await _client.purchase(
           rc.PurchaseParams.package(package),
         );
       } else {
         // Fallback to purchasing product directly if not in offering
-        result = await rc.Purchases.purchase(
+        result = await _client.purchase(
           rc.PurchaseParams.storeProduct(
-            (await rc.Purchases.getProducts([productId])).first,
+            (await _client.getProducts([productId])).first,
           ),
         );
       }
@@ -116,7 +121,7 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
   @override
   Future<Subscription> restorePurchases() async {
     try {
-      final info = await rc.Purchases.restorePurchases();
+      final info = await _client.restorePurchases();
       if (info.entitlements.active.isEmpty) {
         throw const NoPurchasesToRestoreFailure();
       }
@@ -130,9 +135,9 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
   Future<void> setUserId(String? userId) async {
     try {
       if (userId == null) {
-        await rc.Purchases.logOut();
+        await _client.logOut();
       } else {
-        await rc.Purchases.logIn(userId);
+        await _client.logIn(userId);
       }
     } on PlatformException catch (e) {
       throw _handleException(e);
