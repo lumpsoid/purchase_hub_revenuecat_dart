@@ -1,0 +1,22 @@
+name: purchase_hub_revenuecat
+description: A Very Good Project created by Very Good CLI.
+version: 0.1.0+1
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+  flutter: ^3.41.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  purchase_hub_core:
+    git:
+      url: https://github.com/lumpsoid/purchase_hub_core_dart
+  purchases_flutter: ^10.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  mocktail: ^1.0.5
+  very_good_analysis: ^10.2.0
