@@ -25,9 +25,12 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
     await _client.configure(_configuration);
 
     // Listen for customer info updates from RC and pipe them to our domain
-    _client.addCustomerInfoUpdateListener((customerInfo) {
-      _controller.add(_mapCustomerInfoToSubscription(customerInfo));
-    });
+    _client.addCustomerInfoUpdateListener(_onCustomerUpdate);
+  }
+
+  Future<void> _onCustomerUpdate(rc.CustomerInfo customerInfo) async {
+    final sub = await _mapCustomerInfoToSubscription(customerInfo);
+    _controller.add(sub);
   }
 
   @override
@@ -42,7 +45,13 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
   Future<Subscription> getCurrentSubscription() async {
     try {
       final info = await _client.getCustomerInfo();
-      return _mapCustomerInfoToSubscription(info);
+      final ent = _getActiveEntitlement(info);
+      if (ent == null) return Subscription.none;
+
+      final packages = await getAvailableProducts();
+      final period = _extractPeriodFromPackages(packages, ent.identifier);
+      final active = _mapActiveEntitlements(info.entitlements.active.values);
+      return _mapEntitlementToSubscription(ent, period, active);
     } on PlatformException catch (e) {
       throw _handleException(e);
     }
@@ -85,6 +94,23 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
     }
   }
 
+  /// Converts a RevenueCat ISO‑8601 period string (e.g. `P1M`, `P3M`) into a
+  /// [SubscriptionPeriod]. Returns `.unknown` for `null` or any unsupported
+  /// value.
+  SubscriptionPeriod _periodFromString(String? isoPeriod) {
+    return switch (isoPeriod) {
+      'P1W' => SubscriptionPeriod.weekly,
+      'P1M' => SubscriptionPeriod.monthly,
+      'P2M' => SubscriptionPeriod.twoMonth,
+      'P3M' => SubscriptionPeriod.quarterly,
+      'P6M' => SubscriptionPeriod.semiAnnual,
+      'P1Y' => SubscriptionPeriod.annual,
+      null => SubscriptionPeriod.unknown,
+      // Any unknown string ends up here.
+      _ => SubscriptionPeriod.unknown,
+    };
+  }
+
   @override
   Future<PurchaseResult> purchase(String productId) async {
     try {
@@ -94,21 +120,32 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
           .where((pkg) => pkg.storeProduct.identifier == productId)
           .firstOrNull;
 
+      final SubscriptionPeriod period;
       rc.PurchaseResult result;
       if (package != null) {
+        period = _mapPackageToPeriod(package);
         result = await _client.purchase(
           rc.PurchaseParams.package(package),
         );
       } else {
         // Fallback to purchasing product directly if not in offering
+        final p = (await _client.getProducts([productId])).first;
+
+        period = _periodFromString(p.subscriptionPeriod);
         result = await _client.purchase(
-          rc.PurchaseParams.storeProduct(
-            (await _client.getProducts([productId])).first,
-          ),
+          rc.PurchaseParams.storeProduct(p),
         );
       }
 
-      final subscription = _mapCustomerInfoToSubscription(result.customerInfo);
+      final ent = _getActiveEntitlement(result.customerInfo);
+      if (ent == null) {
+        // need to chech in which case this is possible
+        throw ProductNotFoundFailure(productId);
+      }
+      final active = _mapActiveEntitlements(
+        result.customerInfo.entitlements.active.values,
+      );
+      final subscription = _mapEntitlementToSubscription(ent, period, active);
       return PurchaseResult(
         subscription: subscription,
         isNewPurchase: true, // RC throws if already owned or handles upgrades
@@ -116,6 +153,20 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
     } on PlatformException catch (e) {
       throw _handleException(e);
     }
+  }
+
+  SubscriptionPeriod _mapPackageToPeriod(rc.Package package) {
+    return switch (package.packageType) {
+      rc.PackageType.unknown => .unknown,
+      rc.PackageType.custom => .custom,
+      rc.PackageType.lifetime => .lifetime,
+      rc.PackageType.annual => .annual,
+      rc.PackageType.sixMonth => .semiAnnual,
+      rc.PackageType.threeMonth => .quarterly,
+      rc.PackageType.twoMonth => .twoMonth,
+      rc.PackageType.monthly => .monthly,
+      rc.PackageType.weekly => .weekly,
+    };
   }
 
   @override
@@ -144,23 +195,69 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
     }
   }
 
-  Subscription _mapCustomerInfoToSubscription(rc.CustomerInfo info) {
+  SubscriptionPeriod _extractPeriodFromPackages(
+    List<PurchaseProduct> packages,
+    String packageIdentifier,
+  ) {
+    for (var i = 0; i < packages.length; i++) {
+      if (packages[i].id == packageIdentifier) {
+        return packages[i].period;
+      }
+    }
+    return SubscriptionPeriod.unknown;
+  }
+
+  rc.EntitlementInfo? _getActiveEntitlement(rc.CustomerInfo info) {
     if (info.entitlements.active.isEmpty) {
-      return Subscription.none;
+      return null;
     }
 
-    // RevenueCat usually has one primary entitlement for "Pro" access.
     // We take the one with the latest expiration date.
     final active = info.entitlements.active.values.toList()
       ..sort(
         (a, b) => (b.expirationDate ?? '').compareTo(a.expirationDate ?? ''),
       );
 
-    final entitlement = active.first;
+    return active.first;
+  }
 
+  List<Entitlement> _mapActiveEntitlements(
+    Iterable<rc.EntitlementInfo> activeEntitlements,
+  ) {
+    return activeEntitlements
+        .map(
+          (e) => Entitlement(
+            id: e.identifier,
+            productId: e.productIdentifier,
+            willRenew: e.willRenew,
+            expiresAt: e.expirationDate != null
+                ? DateTime.tryParse(e.expirationDate!)
+                : null,
+          ),
+        )
+        .toList();
+  }
+
+  Future<Subscription> _mapCustomerInfoToSubscription(
+    rc.CustomerInfo info,
+  ) async {
+    final ent = _getActiveEntitlement(info);
+    if (ent == null) return Subscription.none;
+
+    final packages = await getAvailableProducts();
+    final period = _extractPeriodFromPackages(packages, ent.identifier);
+    final active = _mapActiveEntitlements(info.entitlements.active.values);
+    return _mapEntitlementToSubscription(ent, period, active);
+  }
+
+  Subscription _mapEntitlementToSubscription(
+    rc.EntitlementInfo entitlement,
+    SubscriptionPeriod subPeriod,
+    Entitlements? entitlements,
+  ) {
     return Subscription(
       productId: entitlement.productIdentifier,
-      period: SubscriptionPeriod.monthly, // Default, updated on product fetch
+      period: subPeriod,
       status: _mapRCStatus(entitlement),
       scope: SubscriptionScope.fromProductId(entitlement.productIdentifier),
       willRenew: entitlement.willRenew,
@@ -169,18 +266,7 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
           ? DateTime.tryParse(entitlement.expirationDate!)
           : null,
       purchasedAt: DateTime.tryParse(entitlement.latestPurchaseDate),
-      entitlements: info.entitlements.active.values
-          .map(
-            (e) => Entitlement(
-              id: e.identifier,
-              productId: e.productIdentifier,
-              willRenew: e.willRenew,
-              expiresAt: e.expirationDate != null
-                  ? DateTime.tryParse(e.expirationDate!)
-                  : null,
-            ),
-          )
-          .toList(),
+      entitlements: entitlements,
     );
   }
 
