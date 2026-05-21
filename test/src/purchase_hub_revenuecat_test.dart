@@ -333,7 +333,7 @@ void main() {
       final result = await adapter.purchase(productId);
 
       expect(result.isNewPurchase, isTrue);
-      expect(result.subscription.productId, productId);
+      expect(result.subscription!.productId, productId);
 
       // Verify the params were built with a package (not a bare product).
       final captured = verify(() => client.purchase(captureAny())).captured;

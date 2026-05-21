@@ -140,15 +140,24 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
         ),
       );
 
+      if (package.packageType == .custom) {
+        return const PurchaseResult(
+          isNewPurchase: true, // RC throws if already owned or handles upgrades
+        );
+      }
       final ent = _getActiveEntitlement(result.customerInfo);
       if (ent == null) {
         // need to chech in which case this is possible
+        // 1. in case the purchase targets non subscription
         throw ProductNotFoundFailure(productId);
       }
       final active = _mapActiveEntitlements(
         result.customerInfo.entitlements.active.values,
       );
+
       final subscription = _mapEntitlementToSubscription(ent, period, active);
+      _controller.add(subscription);
+
       return PurchaseResult(
         subscription: subscription,
         isNewPurchase: true, // RC throws if already owned or handles upgrades
