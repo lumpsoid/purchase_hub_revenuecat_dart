@@ -96,23 +96,6 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
     }
   }
 
-  /// Converts a RevenueCat ISO‑8601 period string (e.g. `P1M`, `P3M`) into a
-  /// [SubscriptionPeriod]. Returns `.unknown` for `null` or any unsupported
-  /// value.
-  SubscriptionPeriod _periodFromString(String? isoPeriod) {
-    return switch (isoPeriod) {
-      'P1W' => SubscriptionPeriod.weekly,
-      'P1M' => SubscriptionPeriod.monthly,
-      'P2M' => SubscriptionPeriod.twoMonth,
-      'P3M' => SubscriptionPeriod.quarterly,
-      'P6M' => SubscriptionPeriod.semiAnnual,
-      'P1Y' => SubscriptionPeriod.annual,
-      null => SubscriptionPeriod.unknown,
-      // Any unknown string ends up here.
-      _ => SubscriptionPeriod.unknown,
-    };
-  }
-
   @override
   Future<PurchaseResult> purchase(
     String productId, {
@@ -121,9 +104,21 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
     try {
       // Find the package in the current offering
       final offerings = await _client.getOfferings();
-      final package = offerings.current?.availablePackages
-          .where((pkg) => pkg.storeProduct.identifier == productId)
-          .firstOrNull;
+      rc.Package? package;
+      if (offerings.current == null ||
+          offerings.current!.availablePackages.isEmpty) {
+        throw ProductNotFoundFailure(productId);
+      }
+      for (final pkg in offerings.current!.availablePackages) {
+        if (pkg.identifier == productId) {
+          package = pkg;
+          break;
+        }
+      }
+
+      if (package == null) {
+        throw ProductNotFoundFailure(productId);
+      }
 
       rc.GoogleProductChangeInfo? changeInfo;
       if (options != null && Platform.isAndroid) {
@@ -137,26 +132,13 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
 
       final SubscriptionPeriod period;
       rc.PurchaseResult result;
-      if (package != null) {
-        period = _mapPackageToPeriod(package);
-        result = await _client.purchase(
-          rc.PurchaseParams.package(
-            package,
-            googleProductChangeInfo: changeInfo,
-          ),
-        );
-      } else {
-        // Fallback to purchasing product directly if not in offering
-        final p = (await _client.getProducts([productId])).first;
-
-        period = _periodFromString(p.subscriptionPeriod);
-        result = await _client.purchase(
-          rc.PurchaseParams.storeProduct(
-            p,
-            googleProductChangeInfo: changeInfo,
-          ),
-        );
-      }
+      period = _mapPackageToPeriod(package);
+      result = await _client.purchase(
+        rc.PurchaseParams.package(
+          package,
+          googleProductChangeInfo: changeInfo,
+        ),
+      );
 
       final ent = _getActiveEntitlement(result.customerInfo);
       if (ent == null) {

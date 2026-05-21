@@ -1,6 +1,6 @@
 name: purchase_hub_revenuecat
 description: Revenuecat implementation of purchase_hub
-version: 0.1.3
+version: 0.1.4
 publish_to: none
 
 environment:
