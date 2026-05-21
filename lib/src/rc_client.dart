@@ -22,6 +22,8 @@ abstract interface class RCClient {
 
   Future<rc.CustomerInfo> restorePurchases();
 
+  Future<void> syncPurchases();
+
   Future<rc.LogInResult> logIn(String appUserID);
 
   Future<rc.CustomerInfo> logOut();
@@ -59,6 +61,9 @@ final class LiveRCClient implements RCClient {
 
   @override
   Future<rc.CustomerInfo> restorePurchases() => rc.Purchases.restorePurchases();
+
+  @override
+  Future<void> syncPurchases() => rc.Purchases.syncPurchases();
 
   @override
   Future<rc.LogInResult> logIn(String appUserID) =>

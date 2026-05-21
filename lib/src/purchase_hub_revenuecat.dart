@@ -195,6 +195,9 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
   }
 
   @override
+  Future<void> syncPurchases() => _client.syncPurchases();
+
+  @override
   Future<void> setUserId(String? userId) async {
     try {
       if (userId == null) {
