@@ -70,7 +70,8 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
       return current.availablePackages.map((pkg) {
         final p = pkg.storeProduct;
         return PurchaseProduct(
-          id: p.identifier,
+          id: pkg.identifier,
+          storeId: p.identifier,
           title: p.title,
           description: p.description,
           priceString: p.priceString,
