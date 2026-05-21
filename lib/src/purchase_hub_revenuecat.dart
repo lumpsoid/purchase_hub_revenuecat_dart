@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:purchase_hub_core/purchase_hub_core.dart';
@@ -113,7 +114,10 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
   }
 
   @override
-  Future<PurchaseResult> purchase(String productId) async {
+  Future<PurchaseResult> purchase(
+    String productId, {
+    PurchaseOptions? options,
+  }) async {
     try {
       // Find the package in the current offering
       final offerings = await _client.getOfferings();
@@ -121,12 +125,25 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
           .where((pkg) => pkg.storeProduct.identifier == productId)
           .firstOrNull;
 
+      rc.GoogleProductChangeInfo? changeInfo;
+      if (options != null && Platform.isAndroid) {
+        changeInfo = rc.GoogleProductChangeInfo(
+          options.currentProductId,
+          prorationMode: options.replacementMode == null
+              ? null
+              : _mapReplacementMode(options.replacementMode!),
+        );
+      }
+
       final SubscriptionPeriod period;
       rc.PurchaseResult result;
       if (package != null) {
         period = _mapPackageToPeriod(package);
         result = await _client.purchase(
-          rc.PurchaseParams.package(package),
+          rc.PurchaseParams.package(
+            package,
+            googleProductChangeInfo: changeInfo,
+          ),
         );
       } else {
         // Fallback to purchasing product directly if not in offering
@@ -134,7 +151,10 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
 
         period = _periodFromString(p.subscriptionPeriod);
         result = await _client.purchase(
-          rc.PurchaseParams.storeProduct(p),
+          rc.PurchaseParams.storeProduct(
+            p,
+            googleProductChangeInfo: changeInfo,
+          ),
         );
       }
 
@@ -316,6 +336,19 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
       _ => UnknownPurchaseFailure(e.message),
     };
   }
+
+  rc.GoogleProrationMode _mapReplacementMode(PurchaseReplacementMode mode) =>
+      switch (mode) {
+        PurchaseReplacementMode.immediateWithTimeProration =>
+          rc.GoogleProrationMode.immediateWithTimeProration,
+        PurchaseReplacementMode.immediateWithoutProration =>
+          rc.GoogleProrationMode.immediateWithoutProration,
+        PurchaseReplacementMode.immediateAndChargeFullPrice =>
+          rc.GoogleProrationMode.immediateAndChargeFullPrice,
+        PurchaseReplacementMode.immediateAndChargeProratedPrice =>
+          rc.GoogleProrationMode.immediateAndChargeProratedPrice,
+        PurchaseReplacementMode.deferred => rc.GoogleProrationMode.deferred,
+      };
 }
 
 /// {@template revenue_cat_initializer}
