@@ -9,3 +9,4 @@ library;
 import 'package:purchase_hub_core/purchase_hub_core.dart' show PurchaseAdapter;
 
 export 'src/purchase_hub_revenuecat.dart';
+export 'src/revenue_cat_configuration.dart';

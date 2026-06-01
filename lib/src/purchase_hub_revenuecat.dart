@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:purchase_hub_core/purchase_hub_core.dart';
 import 'package:purchase_hub_revenuecat/src/rc_client.dart';
+import 'package:purchase_hub_revenuecat/src/revenue_cat_configuration.dart';
 import 'package:purchases_flutter/purchases_flutter.dart' as rc;
 
 /// {@template purchase_hub_revenuecat}
@@ -16,14 +17,14 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
     RCClient client = const LiveRCClient(),
   }) : _client = client;
 
-  final rc.PurchasesConfiguration _configuration;
+  final RevenueCatConfiguration _configuration;
   final RCClient _client;
   final StreamController<Subscription> _controller =
       StreamController<Subscription>.broadcast();
 
   @override
   Future<void> initialize() async {
-    await _client.configure(_configuration);
+    await _client.configure(_configuration.toPurchasesConfiguration());
 
     // Listen for customer info updates from RC and pipe them to our domain
     _client.addCustomerInfoUpdateListener(_onCustomerUpdate);
@@ -353,8 +354,75 @@ final class RevenueCatInitializer implements PurchaseInitializer {
   const RevenueCatInitializer(this.configuration);
 
   /// Configuration of RevenueCat
-  final rc.PurchasesConfiguration configuration;
+  final RevenueCatConfiguration configuration;
 
   @override
   PurchaseAdapter createAdapter() => RevenueCatPurchaseAdapter(configuration);
+}
+
+/// Translates the SDK-free [RevenueCatConfiguration] into the RevenueCat
+/// `PurchasesConfiguration`. Private so the SDK type never leaks past the
+/// package boundary.
+extension _RevenueCatConfigurationMapper on RevenueCatConfiguration {
+  rc.PurchasesConfiguration toPurchasesConfiguration() {
+    final selectedStore = store;
+    final version = storeKitVersion;
+    final completion = purchaseCompletion;
+
+    return (selectedStore == RevenueCatStore.amazon
+        ? rc.AmazonConfiguration(apiKey)
+        : rc.PurchasesConfiguration(apiKey))
+      ..appUserID = appUserId
+      ..preferredUILocaleOverride = preferredUILocaleOverride
+      ..userDefaultsSuiteName = userDefaultsSuiteName
+      ..shouldShowInAppMessagesAutomatically =
+          shouldShowInAppMessagesAutomatically
+      ..pendingTransactionsForPrepaidPlansEnabled =
+          pendingTransactionsForPrepaidPlansEnabled
+      ..automaticDeviceIdentifierCollectionEnabled =
+          automaticDeviceIdentifierCollectionEnabled
+      ..diagnosticsEnabled = diagnosticsEnabled
+      ..entitlementVerificationMode = _mapVerificationMode(
+        entitlementVerificationMode,
+      )
+      ..store = selectedStore == null ? null : _mapStore(selectedStore)
+      ..storeKitVersion = version == null ? null : _mapStoreKitVersion(version)
+      ..purchasesAreCompletedBy = completion == null
+          ? null
+          : _mapCompletion(completion);
+  }
+
+  rc.EntitlementVerificationMode _mapVerificationMode(
+    RevenueCatEntitlementVerificationMode mode,
+  ) => switch (mode) {
+    RevenueCatEntitlementVerificationMode.disabled =>
+      rc.EntitlementVerificationMode.disabled,
+    RevenueCatEntitlementVerificationMode.informational =>
+      rc.EntitlementVerificationMode.informational,
+  };
+
+  rc.Store _mapStore(RevenueCatStore store) => switch (store) {
+    RevenueCatStore.appStore => rc.Store.appStore,
+    RevenueCatStore.playStore => rc.Store.playStore,
+    RevenueCatStore.amazon => rc.Store.amazon,
+  };
+
+  rc.StoreKitVersion _mapStoreKitVersion(RevenueCatStoreKitVersion version) =>
+      switch (version) {
+        RevenueCatStoreKitVersion.storeKit1 => rc.StoreKitVersion.storeKit1,
+        RevenueCatStoreKitVersion.storeKit2 => rc.StoreKitVersion.storeKit2,
+        RevenueCatStoreKitVersion.defaultVersion =>
+          rc.StoreKitVersion.defaultVersion,
+      };
+
+  rc.PurchasesAreCompletedBy _mapCompletion(
+    RevenueCatPurchaseCompletion completion,
+  ) => switch (completion) {
+    RevenueCatCompletedByRevenueCat() =>
+      const rc.PurchasesAreCompletedByRevenueCat(),
+    RevenueCatCompletedByMyApp(:final storeKitVersion) =>
+      rc.PurchasesAreCompletedByMyApp(
+        storeKitVersion: _mapStoreKitVersion(storeKitVersion),
+      ),
+  };
 }

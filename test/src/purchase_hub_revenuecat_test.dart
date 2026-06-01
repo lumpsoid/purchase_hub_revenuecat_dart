@@ -62,12 +62,16 @@ PlatformException _platformException(
 
 void main() {
   late MockRCClient client;
-  late MockPurchasesConfiguration configuration;
+  late RevenueCatConfiguration configuration;
   late RevenueCatPurchaseAdapter adapter;
+
+  setUpAll(() {
+    registerFallbackValue(MockPurchasesConfiguration());
+  });
 
   setUp(() {
     client = MockRCClient();
-    configuration = MockPurchasesConfiguration();
+    configuration = const RevenueCatConfiguration(apiKey: 'test_api_key');
     adapter = RevenueCatPurchaseAdapter(configuration, client: client);
   });
 
@@ -76,17 +80,20 @@ void main() {
   // initialize
 
   group('initialize', () {
-    test('configures RC with the provided configuration', () async {
-      when(() => client.configure(configuration)).thenAnswer((_) async {});
+    test('configures RC with the mapped configuration', () async {
+      when(() => client.configure(any())).thenAnswer((_) async {});
       when(() => client.addCustomerInfoUpdateListener(any())).thenReturn(null);
 
       await adapter.initialize();
 
-      verify(() => client.configure(configuration)).called(1);
+      final captured =
+          verify(() => client.configure(captureAny())).captured.single
+              as rc.PurchasesConfiguration;
+      expect(captured.apiKey, 'test_api_key');
     });
 
     test('registers a customer info update listener', () async {
-      when(() => client.configure(configuration)).thenAnswer((_) async {});
+      when(() => client.configure(any())).thenAnswer((_) async {});
       when(() => client.addCustomerInfoUpdateListener(any())).thenReturn(null);
 
       await adapter.initialize();
@@ -95,7 +102,7 @@ void main() {
     });
 
     test('listener pipes mapped subscription into the stream', () async {
-      when(() => client.configure(configuration)).thenAnswer((_) async {});
+      when(() => client.configure(any())).thenAnswer((_) async {});
 
       rc.CustomerInfoUpdateListener? captured;
       when(() => client.addCustomerInfoUpdateListener(any())).thenAnswer((inv) {
@@ -118,7 +125,7 @@ void main() {
 
   group('dispose', () {
     test('closes the subscription stream', () async {
-      when(() => client.configure(configuration)).thenAnswer((_) async {});
+      when(() => client.configure(any())).thenAnswer((_) async {});
       when(() => client.addCustomerInfoUpdateListener(any())).thenReturn(null);
       await adapter.initialize();
 
