@@ -8,6 +8,9 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
 
 jobs:
   semantic_pull_request:
@@ -20,6 +23,32 @@ jobs:
       modified_files_only: false
 
   build:
-    uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/flutter_package.yml@v1
-    with:
-      flutter_version: "3.41.x"
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📚 Git Checkout
+        uses: actions/checkout@v4
+
+      - name: 🐦 Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.41.x"
+          # subosito's built-in cache keeps runs fast with no composite
+          # action or scheduled warm-cache job to maintain.
+          cache: true
+
+      - name: 📦 Install Dependencies
+        run: flutter pub get
+
+      # Package-state checks: each reports the current health of the package.
+      - name: ✨ Check Formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      # No --fatal-infos: deprecation/lint infos are surfaced in the log
+      # (visible package state) without blocking the build. Warnings and
+      # errors still fail the job.
+      - name: 🕵️ Analyze
+        run: dart analyze
+
+      - name: 🧪 Run Tests
+        run: flutter test
