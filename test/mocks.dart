@@ -28,3 +28,6 @@ class MockIntroductoryPrice extends Mock implements rc.IntroductoryPrice {}
 class MockPurchaseResult extends Mock implements rc.PurchaseResult {}
 
 class MockLogInResult extends Mock implements rc.LogInResult {}
+
+// Fallback for `any()`/`captureAny()` matching on purchase(PurchaseParams).
+class FakePurchaseParams extends Fake implements rc.PurchaseParams {}

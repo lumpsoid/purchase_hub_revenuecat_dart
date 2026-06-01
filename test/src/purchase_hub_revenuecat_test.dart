@@ -49,6 +49,34 @@ MockCustomerInfo _makeCustomerInfo({
   return mockInfo;
 }
 
+/// A valid single-package offering, used as the default `getOfferings` stub so
+/// any flow that reaches `getAvailableProducts` has something to map.
+MockOfferings _makeOfferings({
+  String packageId = 'com.app.pro.monthly',
+  rc.PackageType packageType = rc.PackageType.monthly,
+}) {
+  final product = MockStoreProduct();
+  when(() => product.identifier).thenReturn(packageId);
+  when(() => product.title).thenReturn('Pro Monthly');
+  when(() => product.description).thenReturn('Full access');
+  when(() => product.priceString).thenReturn(r'$4.99');
+  when(() => product.price).thenReturn(4.99);
+  when(() => product.currencyCode).thenReturn('USD');
+  when(() => product.subscriptionPeriod).thenReturn('P1M');
+  when(() => product.introductoryPrice).thenReturn(null);
+
+  final pkg = MockPackage();
+  when(() => pkg.identifier).thenReturn(packageId);
+  when(() => pkg.storeProduct).thenReturn(product);
+  when(() => pkg.packageType).thenReturn(packageType);
+
+  final offering = MockOffering();
+  when(() => offering.availablePackages).thenReturn([pkg]);
+  final offerings = MockOfferings();
+  when(() => offerings.current).thenReturn(offering);
+  return offerings;
+}
+
 PlatformException _platformException(
   rc.PurchasesErrorCode code, {
   String? message,
@@ -67,12 +95,18 @@ void main() {
 
   setUpAll(() {
     registerFallbackValue(MockPurchasesConfiguration());
+    registerFallbackValue(FakePurchaseParams());
   });
 
   setUp(() {
     client = MockRCClient();
     configuration = const RevenueCatConfiguration(apiKey: 'test_api_key');
     adapter = RevenueCatPurchaseAdapter(configuration, client: client);
+
+    // Default offering so flows that reach getAvailableProducts have data.
+    // Individual tests re-stub getOfferings where they need different data.
+    final offerings = _makeOfferings();
+    when(() => client.getOfferings()).thenAnswer((_) async => offerings);
   });
 
   tearDown(() async => adapter.dispose());
@@ -140,9 +174,10 @@ void main() {
 
   group('getCurrentSubscription', () {
     test('returns mapped subscription for active entitlements', () async {
+      final customerInfo = _makeCustomerInfo();
       when(
         () => client.getCustomerInfo(),
-      ).thenAnswer((_) async => _makeCustomerInfo());
+      ).thenAnswer((_) async => customerInfo);
 
       final result = await adapter.getCurrentSubscription();
 
@@ -212,6 +247,7 @@ void main() {
       when(() => product.introductoryPrice).thenReturn(introductoryPrice);
 
       final pkg = MockPackage();
+      when(() => pkg.identifier).thenReturn(identifier);
       when(() => pkg.storeProduct).thenReturn(product);
       when(() => pkg.packageType).thenReturn(packageType);
       return pkg;
@@ -226,9 +262,8 @@ void main() {
     }
 
     test('maps packages to PurchaseProduct list', () async {
-      when(() => client.getOfferings()).thenAnswer(
-        (_) async => offeringsFrom([makePackage()]),
-      );
+      final offerings = offeringsFrom([makePackage()]);
+      when(() => client.getOfferings()).thenAnswer((_) async => offerings);
 
       final products = await adapter.getAvailableProducts();
 
@@ -245,9 +280,8 @@ void main() {
       when(() => intro.periodNumberOfUnits).thenReturn(7);
       when(() => intro.periodUnit).thenReturn(rc.PeriodUnit.day);
 
-      when(() => client.getOfferings()).thenAnswer(
-        (_) async => offeringsFrom([makePackage(introductoryPrice: intro)]),
-      );
+      final offerings = offeringsFrom([makePackage(introductoryPrice: intro)]);
+      when(() => client.getOfferings()).thenAnswer((_) async => offerings);
 
       final products = await adapter.getAvailableProducts();
 
@@ -257,14 +291,13 @@ void main() {
     });
 
     test('maps lifetime package type', () async {
-      when(() => client.getOfferings()).thenAnswer(
-        (_) async => offeringsFrom([
-          makePackage(
-            packageType: rc.PackageType.lifetime,
-            subscriptionPeriod: null,
-          ),
-        ]),
-      );
+      final offerings = offeringsFrom([
+        makePackage(
+          packageType: rc.PackageType.lifetime,
+          subscriptionPeriod: null,
+        ),
+      ]);
+      when(() => client.getOfferings()).thenAnswer((_) async => offerings);
 
       final products = await adapter.getAvailableProducts();
 
@@ -283,9 +316,8 @@ void main() {
     });
 
     test('throws NoOfferingsFailure when packages list is empty', () {
-      when(() => client.getOfferings()).thenAnswer(
-        (_) async => offeringsFrom([]),
-      );
+      final offerings = offeringsFrom([]);
+      when(() => client.getOfferings()).thenAnswer((_) async => offerings);
 
       expect(
         adapter.getAvailableProducts(),
@@ -314,6 +346,7 @@ void main() {
       final product = MockStoreProduct();
       when(() => product.identifier).thenReturn(id);
       final pkg = MockPackage();
+      when(() => pkg.identifier).thenReturn(id);
       when(() => pkg.storeProduct).thenReturn(product);
       when(() => pkg.packageType).thenReturn(rc.PackageType.monthly);
       final offering = MockOffering();
@@ -324,18 +357,17 @@ void main() {
     }
 
     rc.PurchaseResult purchaseResult() {
+      final customerInfo = _makeCustomerInfo();
       final result = MockPurchaseResult();
-      when(() => result.customerInfo).thenReturn(_makeCustomerInfo());
+      when(() => result.customerInfo).thenReturn(customerInfo);
       return result;
     }
 
     test('purchases via package when product is in current offering', () async {
-      when(
-        () => client.getOfferings(),
-      ).thenAnswer((_) async => offeringsWithProduct(productId));
-      when(
-        () => client.purchase(any()),
-      ).thenAnswer((_) async => purchaseResult());
+      final offerings = offeringsWithProduct(productId);
+      final purchaseRes = purchaseResult();
+      when(() => client.getOfferings()).thenAnswer((_) async => offerings);
+      when(() => client.purchase(any())).thenAnswer((_) async => purchaseRes);
 
       final result = await adapter.purchase(productId);
 
@@ -350,36 +382,24 @@ void main() {
       );
     });
 
-    test('falls back to storeProduct purchase when not in offering', () async {
-      // Offering contains a different product.
-      when(
-        () => client.getOfferings(),
-      ).thenAnswer((_) async => offeringsWithProduct('com.app.pro.annual'));
+    test(
+      'throws ProductNotFoundFailure when product not in offering',
+      () async {
+        // Offering contains a different product than the one requested.
+        final offerings = offeringsWithProduct('com.app.pro.annual');
+        when(() => client.getOfferings()).thenAnswer((_) async => offerings);
 
-      final fallbackProduct = MockStoreProduct();
-      when(() => fallbackProduct.identifier).thenReturn(productId);
-      when(
-        () => client.getProducts([productId]),
-      ).thenAnswer((_) async => [fallbackProduct]);
-      when(
-        () => client.purchase(any()),
-      ).thenAnswer((_) async => purchaseResult());
-
-      final result = await adapter.purchase(productId);
-
-      expect(result.isNewPurchase, isTrue);
-
-      final captured = verify(() => client.purchase(captureAny())).captured;
-      expect(
-        (captured.single as rc.PurchaseParams).product,
-        isNotNull,
-      );
-    });
+        await expectLater(
+          adapter.purchase(productId),
+          throwsA(isA<ProductNotFoundFailure>()),
+        );
+        verifyNever(() => client.purchase(any()));
+      },
+    );
 
     test('throws PurchaseCancelledFailure when user cancels', () {
-      when(
-        () => client.getOfferings(),
-      ).thenAnswer((_) async => offeringsWithProduct(productId));
+      final offerings = offeringsWithProduct(productId);
+      when(() => client.getOfferings()).thenAnswer((_) async => offerings);
       when(() => client.purchase(any())).thenThrow(
         _platformException(rc.PurchasesErrorCode.purchaseCancelledError),
       );
@@ -391,9 +411,8 @@ void main() {
     });
 
     test('throws AlreadySubscribedFailure when already purchased', () {
-      when(
-        () => client.getOfferings(),
-      ).thenAnswer((_) async => offeringsWithProduct(productId));
+      final offerings = offeringsWithProduct(productId);
+      when(() => client.getOfferings()).thenAnswer((_) async => offerings);
       when(() => client.purchase(any())).thenThrow(
         _platformException(rc.PurchasesErrorCode.productAlreadyPurchasedError),
       );
@@ -405,9 +424,8 @@ void main() {
     });
 
     test('throws PurchasesNotAllowedFailure', () {
-      when(
-        () => client.getOfferings(),
-      ).thenAnswer((_) async => offeringsWithProduct(productId));
+      final offerings = offeringsWithProduct(productId);
+      when(() => client.getOfferings()).thenAnswer((_) async => offerings);
       when(() => client.purchase(any())).thenThrow(
         _platformException(rc.PurchasesErrorCode.purchaseNotAllowedError),
       );
@@ -419,9 +437,8 @@ void main() {
     });
 
     test('throws ProductNotFoundFailure', () {
-      when(
-        () => client.getOfferings(),
-      ).thenAnswer((_) async => offeringsWithProduct(productId));
+      final offerings = offeringsWithProduct(productId);
+      when(() => client.getOfferings()).thenAnswer((_) async => offerings);
       when(() => client.purchase(any())).thenThrow(
         _platformException(
           rc.PurchasesErrorCode.productNotAvailableForPurchaseError,
@@ -435,9 +452,8 @@ void main() {
     });
 
     test('throws StoreFailure on configuration error', () {
-      when(
-        () => client.getOfferings(),
-      ).thenAnswer((_) async => offeringsWithProduct(productId));
+      final offerings = offeringsWithProduct(productId);
+      when(() => client.getOfferings()).thenAnswer((_) async => offerings);
       when(() => client.purchase(any())).thenThrow(
         _platformException(rc.PurchasesErrorCode.configurationError),
       );
@@ -450,9 +466,10 @@ void main() {
 
   group('restorePurchases', () {
     test('returns subscription on successful restore', () async {
+      final customerInfo = _makeCustomerInfo();
       when(
         () => client.restorePurchases(),
-      ).thenAnswer((_) async => _makeCustomerInfo());
+      ).thenAnswer((_) async => customerInfo);
 
       final result = await adapter.restorePurchases();
 
@@ -487,8 +504,9 @@ void main() {
 
   group('setUserId', () {
     test('calls logIn when userId is non-null', () async {
+      final customerInfo = _makeCustomerInfo();
       final loginResult = MockLogInResult();
-      when(() => loginResult.customerInfo).thenReturn(_makeCustomerInfo());
+      when(() => loginResult.customerInfo).thenReturn(customerInfo);
       when(() => loginResult.created).thenReturn(false);
       when(() => client.logIn('user-123')).thenAnswer((_) async => loginResult);
 
@@ -499,7 +517,8 @@ void main() {
     });
 
     test('calls logOut when userId is null', () async {
-      when(() => client.logOut()).thenAnswer((_) async => _makeCustomerInfo());
+      final customerInfo = _makeCustomerInfo();
+      when(() => client.logOut()).thenAnswer((_) async => customerInfo);
 
       await adapter.setUserId(null);
 
@@ -541,9 +560,12 @@ void main() {
           expirationDate: '2027-06-01T00:00:00Z',
         );
 
-        when(() => client.getCustomerInfo()).thenAnswer(
-          (_) async => _makeCustomerInfo(activeEntitlements: [earlier, later]),
+        final customerInfo = _makeCustomerInfo(
+          activeEntitlements: [earlier, later],
         );
+        when(
+          () => client.getCustomerInfo(),
+        ).thenAnswer((_) async => customerInfo);
 
         final result = await adapter.getCurrentSubscription();
 
@@ -552,13 +574,14 @@ void main() {
     );
 
     test('maps isTrial=true when periodType is trial', () async {
-      when(() => client.getCustomerInfo()).thenAnswer(
-        (_) async => _makeCustomerInfo(
-          activeEntitlements: [
-            _makeEntitlement(periodType: rc.PeriodType.trial),
-          ],
-        ),
+      final customerInfo = _makeCustomerInfo(
+        activeEntitlements: [
+          _makeEntitlement(periodType: rc.PeriodType.trial),
+        ],
       );
+      when(
+        () => client.getCustomerInfo(),
+      ).thenAnswer((_) async => customerInfo);
 
       expect((await adapter.getCurrentSubscription()).isTrial, isTrue);
     });
@@ -566,15 +589,14 @@ void main() {
     test(
       'maps status to gracePeriod when billingIssueDetectedAt is set',
       () async {
-        when(() => client.getCustomerInfo()).thenAnswer(
-          (_) async => _makeCustomerInfo(
-            activeEntitlements: [
-              _makeEntitlement(
-                billingIssueDetectedAt: '2026-04-01T00:00:00Z',
-              ),
-            ],
-          ),
+        final customerInfo = _makeCustomerInfo(
+          activeEntitlements: [
+            _makeEntitlement(billingIssueDetectedAt: '2026-04-01T00:00:00Z'),
+          ],
         );
+        when(
+          () => client.getCustomerInfo(),
+        ).thenAnswer((_) async => customerInfo);
 
         expect(
           (await adapter.getCurrentSubscription()).status,
@@ -586,15 +608,14 @@ void main() {
     test(
       'maps status to cancelled when unsubscribeDetectedAt is set',
       () async {
-        when(() => client.getCustomerInfo()).thenAnswer(
-          (_) async => _makeCustomerInfo(
-            activeEntitlements: [
-              _makeEntitlement(
-                unsubscribeDetectedAt: '2026-04-01T00:00:00Z',
-              ),
-            ],
-          ),
+        final customerInfo = _makeCustomerInfo(
+          activeEntitlements: [
+            _makeEntitlement(unsubscribeDetectedAt: '2026-04-01T00:00:00Z'),
+          ],
         );
+        when(
+          () => client.getCustomerInfo(),
+        ).thenAnswer((_) async => customerInfo);
 
         expect(
           (await adapter.getCurrentSubscription()).status,
@@ -633,9 +654,10 @@ void main() {
         expirationDate: '2099-12-31T00:00:00Z',
       );
 
-      when(() => client.getCustomerInfo()).thenAnswer(
-        (_) async => _makeCustomerInfo(activeEntitlements: [e1, e2]),
-      );
+      final customerInfo = _makeCustomerInfo(activeEntitlements: [e1, e2]);
+      when(
+        () => client.getCustomerInfo(),
+      ).thenAnswer((_) async => customerInfo);
 
       final result = await adapter.getCurrentSubscription();
 
