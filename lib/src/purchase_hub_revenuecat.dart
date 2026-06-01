@@ -120,11 +120,11 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
         throw ProductNotFoundFailure(productId);
       }
 
-      rc.GoogleProductChangeInfo? changeInfo;
+      rc.StoreProductChangeInfo? changeInfo;
       if (options != null && Platform.isAndroid) {
-        changeInfo = rc.GoogleProductChangeInfo(
+        changeInfo = rc.StoreProductChangeInfo(
           options.currentProductId,
-          prorationMode: options.replacementMode == null
+          replacementMode: options.replacementMode == null
               ? null
               : _mapReplacementMode(options.replacementMode!),
         );
@@ -136,7 +136,7 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
       result = await _client.purchase(
         rc.PurchaseParams.package(
           package,
-          googleProductChangeInfo: changeInfo,
+          productChangeInfo: changeInfo,
         ),
       );
 
@@ -331,17 +331,17 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
     };
   }
 
-  rc.GoogleProrationMode _mapReplacementMode(PurchaseReplacementMode mode) =>
+  rc.StoreReplacementMode _mapReplacementMode(PurchaseReplacementMode mode) =>
       switch (mode) {
         PurchaseReplacementMode.immediateWithTimeProration =>
-          rc.GoogleProrationMode.immediateWithTimeProration,
+          rc.StoreReplacementMode.withTimeProration,
         PurchaseReplacementMode.immediateWithoutProration =>
-          rc.GoogleProrationMode.immediateWithoutProration,
+          rc.StoreReplacementMode.withoutProration,
         PurchaseReplacementMode.immediateAndChargeFullPrice =>
-          rc.GoogleProrationMode.immediateAndChargeFullPrice,
+          rc.StoreReplacementMode.chargeFullPrice,
         PurchaseReplacementMode.immediateAndChargeProratedPrice =>
-          rc.GoogleProrationMode.immediateAndChargeProratedPrice,
-        PurchaseReplacementMode.deferred => rc.GoogleProrationMode.deferred,
+          rc.StoreReplacementMode.chargeProratedPrice,
+        PurchaseReplacementMode.deferred => rc.StoreReplacementMode.deferred,
       };
 }
 
