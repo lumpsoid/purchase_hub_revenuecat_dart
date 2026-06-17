@@ -11,9 +11,9 @@ dependencies:
   flutter:
     sdk: flutter
   purchase_hub_core:
-    version: ^0.1.6
     git:
       url: https://github.com/lumpsoid/purchase_hub_core_dart
+      ref: "c9c86c4deb9a34c7a7eea44aa28eaa055bc8fd1a"
   purchases_flutter: ^10.2.0
 
 dev_dependencies:
