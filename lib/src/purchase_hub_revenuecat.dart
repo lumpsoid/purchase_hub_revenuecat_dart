@@ -121,8 +121,15 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
         throw ProductNotFoundFailure(productId);
       }
 
+      // UpgradeInfo/StoreProductChangeInfo is only valid for subscription
+      // replacement on Android. Passing it for a non-subscription product
+      // (consumables / one-off packs) makes Google Play Billing reject the
+      // purchase with PurchaseNotAllowedError.
+      final isSubscription =
+          package.storeProduct.productCategory ==
+          rc.ProductCategory.subscription;
       rc.StoreProductChangeInfo? changeInfo;
-      if (options != null && Platform.isAndroid) {
+      if (options != null && Platform.isAndroid && isSubscription) {
         changeInfo = rc.StoreProductChangeInfo(
           options.currentProductId,
           replacementMode: options.replacementMode == null
