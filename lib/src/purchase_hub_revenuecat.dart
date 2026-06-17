@@ -285,6 +285,7 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
       scope: SubscriptionScope.fromProductId(entitlement.productIdentifier),
       willRenew: entitlement.willRenew,
       isTrial: entitlement.periodType == rc.PeriodType.trial,
+      store: _mapEntitlementStore(entitlement.store),
       expiresAt: entitlement.expirationDate != null
           ? DateTime.tryParse(entitlement.expirationDate!)
           : null,
@@ -292,6 +293,19 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
       entitlements: entitlements,
     );
   }
+
+  /// Maps RevenueCat's [rc.Store] (the backend that unlocked the entitlement)
+  /// onto the store-agnostic [SubscriptionStore]. Unmapped stores pass through
+  /// by name so callers can still distinguish them.
+  SubscriptionStore _mapEntitlementStore(rc.Store store) => switch (store) {
+    rc.Store.playStore => SubscriptionStore.playStore,
+    rc.Store.appStore || rc.Store.macAppStore => SubscriptionStore.appStore,
+    rc.Store.amazon => SubscriptionStore.amazon,
+    rc.Store.stripe => SubscriptionStore.stripe,
+    rc.Store.promotional => SubscriptionStore.promotional,
+    rc.Store.unknownStore => SubscriptionStore.unknown,
+    _ => SubscriptionStore(store.name),
+  };
 
   SubscriptionStatus _mapRCStatus(rc.EntitlementInfo info) {
     if (!info.isActive) return SubscriptionStatus.inactive;
@@ -377,8 +391,8 @@ extension _RevenueCatConfigurationMapper on RevenueCatConfiguration {
     final completion = purchaseCompletion;
 
     return (selectedStore == RevenueCatStore.amazon
-        ? rc.AmazonConfiguration(apiKey)
-        : rc.PurchasesConfiguration(apiKey))
+          ? rc.AmazonConfiguration(apiKey)
+          : rc.PurchasesConfiguration(apiKey))
       ..appUserID = appUserId
       ..preferredUILocaleOverride = preferredUILocaleOverride
       ..userDefaultsSuiteName = userDefaultsSuiteName
