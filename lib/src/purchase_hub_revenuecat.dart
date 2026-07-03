@@ -51,7 +51,7 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
       if (ent == null) return Subscription.none;
 
       final packages = await getAvailableProducts();
-      final period = _extractPeriodFromPackages(packages, ent.identifier);
+      final period = _extractPeriodFromPackages(packages, ent.productIdentifier);
       final active = _mapActiveEntitlements(info.entitlements.active.values);
       return _mapEntitlementToSubscription(ent, period, active);
     } on PlatformException catch (e) {
@@ -223,7 +223,7 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
     String packageIdentifier,
   ) {
     for (var i = 0; i < packages.length; i++) {
-      if (packages[i].id == packageIdentifier) {
+      if (packages[i].storeId.startsWith(packageIdentifier)) {
         return packages[i].period;
       }
     }
@@ -268,7 +268,7 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
     if (ent == null) return Subscription.none;
 
     final packages = await getAvailableProducts();
-    final period = _extractPeriodFromPackages(packages, ent.identifier);
+    final period = _extractPeriodFromPackages(packages, ent.productIdentifier);
     final active = _mapActiveEntitlements(info.entitlements.active.values);
     return _mapEntitlementToSubscription(ent, period, active);
   }
