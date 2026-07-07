@@ -21,6 +21,7 @@ MockEntitlementInfo _makeEntitlement({
   String? billingIssueDetectedAt,
   String? unsubscribeDetectedAt,
   rc.PeriodType periodType = rc.PeriodType.normal,
+  rc.Store store = rc.Store.appStore,
 }) {
   final mock = MockEntitlementInfo();
   when(() => mock.identifier).thenReturn(identifier);
@@ -32,6 +33,7 @@ MockEntitlementInfo _makeEntitlement({
   when(() => mock.billingIssueDetectedAt).thenReturn(billingIssueDetectedAt);
   when(() => mock.unsubscribeDetectedAt).thenReturn(unsubscribeDetectedAt);
   when(() => mock.periodType).thenReturn(periodType);
+  when(() => mock.store).thenReturn(store);
   return mock;
 }
 
