@@ -24,6 +24,12 @@ final class RevenueCatPurchaseAdapter implements PurchaseAdapter {
 
   @override
   Future<void> initialize() async {
+    // Set the log level before configuring so configuration itself is logged.
+    final logLevel = _configuration.logLevel;
+    if (logLevel != null) {
+      await _client.setLogLevel(logLevel.toRCLogLevel());
+    }
+
     await _client.configure(_configuration.toPurchasesConfiguration());
 
     // Listen for customer info updates from RC and pipe them to our domain
@@ -445,5 +451,17 @@ extension _RevenueCatConfigurationMapper on RevenueCatConfiguration {
       rc.PurchasesAreCompletedByMyApp(
         storeKitVersion: _mapStoreKitVersion(storeKitVersion),
       ),
+  };
+}
+
+/// Translates the SDK-free [RevenueCatLogLevel] into RevenueCat's
+/// `LogLevel`.
+extension _RevenueCatLogLevelMapper on RevenueCatLogLevel {
+  rc.LogLevel toRCLogLevel() => switch (this) {
+    RevenueCatLogLevel.verbose => rc.LogLevel.verbose,
+    RevenueCatLogLevel.debug => rc.LogLevel.debug,
+    RevenueCatLogLevel.info => rc.LogLevel.info,
+    RevenueCatLogLevel.warn => rc.LogLevel.warn,
+    RevenueCatLogLevel.error => rc.LogLevel.error,
   };
 }

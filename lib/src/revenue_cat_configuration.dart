@@ -16,6 +16,7 @@ final class RevenueCatConfiguration {
     this.userDefaultsSuiteName,
     this.storeKitVersion,
     this.purchaseCompletion,
+    this.logLevel,
     this.entitlementVerificationMode =
         RevenueCatEntitlementVerificationMode.disabled,
     this.shouldShowInAppMessagesAutomatically = true,
@@ -51,6 +52,10 @@ final class RevenueCatConfiguration {
 
   /// Who finalizes purchases. `null` defaults to RevenueCat completing them.
   final RevenueCatPurchaseCompletion? purchaseCompletion;
+
+  /// Verbosity of the RevenueCat SDK's own logging. `null` leaves the SDK
+  /// default in place (the adapter does not touch the log level).
+  final RevenueCatLogLevel? logLevel;
 
   /// Entitlement verification strictness. Defaults to
   /// [RevenueCatEntitlementVerificationMode.disabled].
@@ -94,6 +99,24 @@ enum RevenueCatStoreKitVersion {
 
   /// Let RevenueCat pick the most appropriate StoreKit version.
   defaultVersion,
+}
+
+/// Mirror of RevenueCat's `LogLevel`, ordered from most to least verbose.
+enum RevenueCatLogLevel {
+  /// Everything, including internal SDK details.
+  verbose,
+
+  /// Debug messages and above.
+  debug,
+
+  /// Informational messages and above.
+  info,
+
+  /// Warnings and errors only.
+  warn,
+
+  /// Errors only.
+  error,
 }
 
 /// Mirror of RevenueCat's `EntitlementVerificationMode`.

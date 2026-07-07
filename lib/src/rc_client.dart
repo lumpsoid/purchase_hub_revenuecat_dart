@@ -8,6 +8,8 @@ import 'package:purchases_flutter/purchases_flutter.dart' as rc;
 /// Thin interface over RevenueCat's static [rc.Purchases] API.
 /// This seam exists solely to make [RevenueCatPurchaseAdapter] testable.
 abstract interface class RCClient {
+  Future<void> setLogLevel(rc.LogLevel level);
+
   Future<void> configure(rc.PurchasesConfiguration configuration);
 
   void addCustomerInfoUpdateListener(rc.CustomerInfoUpdateListener listener);
@@ -35,6 +37,10 @@ abstract interface class RCClient {
 final class LiveRCClient implements RCClient {
   /// {@macro live_rc_client}
   const LiveRCClient();
+
+  @override
+  Future<void> setLogLevel(rc.LogLevel level) =>
+      rc.Purchases.setLogLevel(level);
 
   @override
   Future<void> configure(rc.PurchasesConfiguration configuration) =>

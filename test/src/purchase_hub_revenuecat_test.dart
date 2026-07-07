@@ -96,6 +96,7 @@ void main() {
   setUpAll(() {
     registerFallbackValue(MockPurchasesConfiguration());
     registerFallbackValue(FakePurchaseParams());
+    registerFallbackValue(rc.LogLevel.debug);
   });
 
   setUp(() {
@@ -124,6 +125,36 @@ void main() {
           verify(() => client.configure(captureAny())).captured.single
               as rc.PurchasesConfiguration;
       expect(captured.apiKey, 'test_api_key');
+    });
+
+    test('does not set a log level when none is configured', () async {
+      when(() => client.configure(any())).thenAnswer((_) async {});
+      when(() => client.addCustomerInfoUpdateListener(any())).thenReturn(null);
+
+      await adapter.initialize();
+
+      verifyNever(() => client.setLogLevel(any()));
+    });
+
+    test('sets the configured log level before configuring', () async {
+      final loggingAdapter = RevenueCatPurchaseAdapter(
+        const RevenueCatConfiguration(
+          apiKey: 'test_api_key',
+          logLevel: RevenueCatLogLevel.debug,
+        ),
+        client: client,
+      );
+      when(() => client.setLogLevel(any())).thenAnswer((_) async {});
+      when(() => client.configure(any())).thenAnswer((_) async {});
+      when(() => client.addCustomerInfoUpdateListener(any())).thenReturn(null);
+
+      await loggingAdapter.initialize();
+
+      verifyInOrder([
+        () => client.setLogLevel(rc.LogLevel.debug),
+        () => client.configure(any()),
+      ]);
+      await loggingAdapter.dispose();
     });
 
     test('registers a customer info update listener', () async {
