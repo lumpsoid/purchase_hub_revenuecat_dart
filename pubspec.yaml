@@ -14,7 +14,7 @@ dependencies:
     git:
       url: https://github.com/lumpsoid/purchase_hub_core_dart
       ref: "d99e786cbb2a8a20fd4408fe611e6ca72bf9482d"
-  purchases_flutter: ^10.2.0
+  purchases_flutter: ^10.4.0
 
 dev_dependencies:
   flutter_test:
